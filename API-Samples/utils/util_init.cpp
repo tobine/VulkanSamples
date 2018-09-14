@@ -259,8 +259,8 @@ VkResult init_enumerate_device(struct sample_info &info, uint32_t gpu_count) {
     vkGetPhysicalDeviceMemoryProperties(info.gpus[0], &info.memory_properties);
     vkGetPhysicalDeviceProperties(info.gpus[0], &info.gpu_props);
     /* query device extensions for enabled layers */
-    for (auto& layer_props : info.instance_layer_properties) {
-      init_device_extension_properties(info, layer_props);
+    for (auto &layer_props : info.instance_layer_properties) {
+        init_device_extension_properties(info, layer_props);
     }
 
     return res;
@@ -411,7 +411,8 @@ void init_connection(struct sample_info &info) {
 #endif
 }
 #ifdef _WIN32
-static void run(struct sample_info *info) { /* Placeholder for samples that want to show dynamic content */ }
+static void run(struct sample_info *info) { /* Placeholder for samples that want to show dynamic content */
+}
 
 // MS-Windows event handling function:
 LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -491,9 +492,7 @@ void destroy_window(struct sample_info &info) {
 
 // iOS & macOS: init_window() implemented externally to allow access to Objective-C components
 
-void destroy_window(struct sample_info &info) {
-	info.window = NULL;
-}
+void destroy_window(struct sample_info &info) { info.window = NULL; }
 
 #elif defined(__ANDROID__)
 // Android implementation.
@@ -599,14 +598,14 @@ void init_depth_buffer(struct sample_info &info) {
     VkImageCreateInfo image_info = {};
 
     /* allow custom depth formats */
-#ifdef __ANDROID__
+    //#ifdef 1 //__ANDROID__
     // Depth format needs to be VK_FORMAT_D24_UNORM_S8_UINT on Android.
     info.depth.format = VK_FORMAT_D24_UNORM_S8_UINT;
-#elif defined(VK_USE_PLATFORM_IOS_MVK)
-    if (info.depth.format == VK_FORMAT_UNDEFINED) info.depth.format = VK_FORMAT_D32_SFLOAT;
-#else
-    if (info.depth.format == VK_FORMAT_UNDEFINED) info.depth.format = VK_FORMAT_D16_UNORM;
-#endif
+    //#elif defined(VK_USE_PLATFORM_IOS_MVK)
+    //    if (info.depth.format == VK_FORMAT_UNDEFINED) info.depth.format = VK_FORMAT_D32_SFLOAT;
+    //#else
+    //    if (info.depth.format == VK_FORMAT_UNDEFINED) info.depth.format = VK_FORMAT_D16_UNORM;
+    //#endif
 
     const VkFormat depth_format = info.depth.format;
     VkFormatProperties props;
@@ -1053,23 +1052,25 @@ void init_uniform_buffer(struct sample_info &info) {
     info.View = glm::lookAt(glm::vec3(-5, 3, -10),  // Camera is at (-5,3,-10), in World Space
                             glm::vec3(0, 0, 0),     // and looks at the origin
                             glm::vec3(0, -1, 0)     // Head is up (set to 0,-1,0 to look upside-down)
-                            );
+    );
     info.Model = glm::mat4(1.0f);
     // Vulkan clip space has inverted Y and half Z.
     info.Clip = glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 0.5f, 1.0f);
 
     info.MVP = info.Clip * info.Projection * info.View * info.Model;
+    // TODO: Just using 1st 48bytes to simulate ANGLE Uniform buffer
+    info.MVP = glm::mat4(3.0f, 43.0f, 256.0f, 256.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 
     /* VULKAN_KEY_START */
     VkBufferCreateInfo buf_info = {};
     buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buf_info.pNext = NULL;
+    buf_info.flags = 0;
+    buf_info.size = 768;  // sizeof(info.MVP);
     buf_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    buf_info.size = sizeof(info.MVP);
+    buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     buf_info.queueFamilyIndexCount = 0;
     buf_info.pQueueFamilyIndices = NULL;
-    buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    buf_info.flags = 0;
     res = vkCreateBuffer(info.device, &buf_info, NULL, &info.uniform_data.buf);
     assert(res == VK_SUCCESS);
 
@@ -1082,12 +1083,15 @@ void init_uniform_buffer(struct sample_info &info) {
     alloc_info.memoryTypeIndex = 0;
 
     alloc_info.allocationSize = mem_reqs.size;
-    pass = memory_type_from_properties(info, mem_reqs.memoryTypeBits,
+    pass = memory_type_from_properties(info, mem_reqs.memoryTypeBits,  // VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                        &alloc_info.memoryTypeIndex);
     assert(pass && "No mappable, coherent memory");
 
     res = vkAllocateMemory(info.device, &alloc_info, NULL, &(info.uniform_data.mem));
+    assert(res == VK_SUCCESS);
+
+    res = vkBindBufferMemory(info.device, info.uniform_data.buf, info.uniform_data.mem, 0);
     assert(res == VK_SUCCESS);
 
     uint8_t *pData;
@@ -1096,56 +1100,100 @@ void init_uniform_buffer(struct sample_info &info) {
 
     memcpy(pData, &info.MVP, sizeof(info.MVP));
 
-    vkUnmapMemory(info.device, info.uniform_data.mem);
-
-    res = vkBindBufferMemory(info.device, info.uniform_data.buf, info.uniform_data.mem, 0);
-    assert(res == VK_SUCCESS);
+    // TODO: ANGLE doesn't unmap the memory here, waits 'til very end
+    // vkUnmapMemory(info.device, info.uniform_data.mem);
+    VkMappedMemoryRange mapped_mem_range = {};
+    mapped_mem_range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    mapped_mem_range.pNext = NULL;
+    mapped_mem_range.memory = info.uniform_data.mem;
+    mapped_mem_range.offset = 0;
+    mapped_mem_range.size = 256;
+    vkFlushMappedMemoryRanges(info.device, 1, &mapped_mem_range);
 
     info.uniform_data.buffer_info.buffer = info.uniform_data.buf;
     info.uniform_data.buffer_info.offset = 0;
-    info.uniform_data.buffer_info.range = sizeof(info.MVP);
+    info.uniform_data.buffer_info.range = 48;  // sizeof(info.MVP);
 }
 
 void init_descriptor_and_pipeline_layouts(struct sample_info &info, bool use_texture,
                                           VkDescriptorSetLayoutCreateFlags descSetLayoutCreateFlags) {
     VkDescriptorSetLayoutBinding layout_bindings[2];
     layout_bindings[0].binding = 0;
-    layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     layout_bindings[0].descriptorCount = 1;
-    layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     layout_bindings[0].pImmutableSamplers = NULL;
 
-    if (use_texture) {
-        layout_bindings[1].binding = 1;
-        layout_bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        layout_bindings[1].descriptorCount = 1;
-        layout_bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        layout_bindings[1].pImmutableSamplers = NULL;
-    }
+    //    if (use_texture) {
+    layout_bindings[1].binding = 1;
+    layout_bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    layout_bindings[1].descriptorCount = 1;
+    layout_bindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    layout_bindings[1].pImmutableSamplers = NULL;
+    //    }
 
     /* Next take layout bindings and use them to create a descriptor set layout
      */
+    //    VkDescriptorSetLayoutCreateInfo descriptor_layout = {};
+    //    descriptor_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    //    descriptor_layout.pNext = NULL;
+    //    descriptor_layout.flags = descSetLayoutCreateFlags;
+    //    descriptor_layout.bindingCount = use_texture ? 2 : 1;
+    //    descriptor_layout.pBindings = layout_bindings;
+    //
+    //    VkResult U_ASSERT_ONLY res;
+    //
+    //    info.desc_layout.resize(NUM_DESCRIPTOR_SETS);
+    //    res = vkCreateDescriptorSetLayout(info.device, &descriptor_layout, NULL, info.desc_layout.data());
+    //    assert(res == VK_SUCCESS);
     VkDescriptorSetLayoutCreateInfo descriptor_layout = {};
     descriptor_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     descriptor_layout.pNext = NULL;
     descriptor_layout.flags = descSetLayoutCreateFlags;
-    descriptor_layout.bindingCount = use_texture ? 2 : 1;
+    descriptor_layout.bindingCount = 2;  // use_texture ? 2 : 1;
     descriptor_layout.pBindings = layout_bindings;
 
     VkResult U_ASSERT_ONLY res;
 
     info.desc_layout.resize(NUM_DESCRIPTOR_SETS);
-    res = vkCreateDescriptorSetLayout(info.device, &descriptor_layout, NULL, info.desc_layout.data());
+    res = vkCreateDescriptorSetLayout(info.device, &descriptor_layout, NULL, &info.desc_layout[0]);
+    assert(res == VK_SUCCESS);
+    descriptor_layout.bindingCount = 0;
+    descriptor_layout.pBindings = NULL;
+    res = vkCreateDescriptorSetLayout(info.device, &descriptor_layout, NULL, &info.desc_layout[1]);
+    assert(res == VK_SUCCESS);
+    layout_bindings[0].binding = 0;
+    layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    layout_bindings[0].descriptorCount = 1;
+    layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    layout_bindings[0].pImmutableSamplers = NULL;
+    descriptor_layout.bindingCount = 1;
+    descriptor_layout.pBindings = layout_bindings;
+    res = vkCreateDescriptorSetLayout(info.device, &descriptor_layout, NULL, &info.desc_layout[2]);
     assert(res == VK_SUCCESS);
 
     /* Now use the descriptor layout to create a pipeline layout */
     VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {};
     pPipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pPipelineLayoutCreateInfo.pNext = NULL;
-    pPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
-    pPipelineLayoutCreateInfo.pPushConstantRanges = NULL;
+    pPipelineLayoutCreateInfo.flags = 0;
     pPipelineLayoutCreateInfo.setLayoutCount = NUM_DESCRIPTOR_SETS;
     pPipelineLayoutCreateInfo.pSetLayouts = info.desc_layout.data();
+    // pPipelineLayoutCreateInfo.setLayoutCount = 1;
+    //  pPipelineLayoutCreateInfo.pSetLayouts = &info.desc_layout[2];
+    //.data();
+#if USE_PUSH_CONSTANTS
+    const uint32_t pcr_count = 1;
+    VkPushConstantRange push_const_ranges[pcr_count] = {};
+    push_const_ranges[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    push_const_ranges[0].offset = 0;
+    push_const_ranges[0].size = 48;
+    pPipelineLayoutCreateInfo.pushConstantRangeCount = pcr_count;
+    pPipelineLayoutCreateInfo.pPushConstantRanges = push_const_ranges;
+#else
+    pPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+    pPipelineLayoutCreateInfo.pPushConstantRanges = NULL;
+#endif
 
     res = vkCreatePipelineLayout(info.device, &pPipelineLayoutCreateInfo, NULL, &info.pipeline_layout);
     assert(res == VK_SUCCESS);
@@ -1157,26 +1205,26 @@ void init_renderpass(struct sample_info &info, bool include_depth, bool clear, V
     VkResult U_ASSERT_ONLY res;
     /* Need attachments for render target and depth buffer */
     VkAttachmentDescription attachments[2];
+    attachments[0].flags = VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT;
     attachments[0].format = info.format;
     attachments[0].samples = NUM_SAMPLES;
-    attachments[0].loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[0].finalLayout = finalLayout;
-    attachments[0].flags = 0;
+    attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     if (include_depth) {
+        attachments[1].flags = VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT;
         attachments[1].format = info.depth.format;
         attachments[1].samples = NUM_SAMPLES;
-        attachments[1].loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+        attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-        attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-        attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        attachments[1].flags = 0;
     }
 
     VkAttachmentReference color_reference = {};
@@ -1188,8 +1236,8 @@ void init_renderpass(struct sample_info &info, bool include_depth, bool clear, V
     depth_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.flags = 0;
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.inputAttachmentCount = 0;
     subpass.pInputAttachments = NULL;
     subpass.colorAttachmentCount = 1;
@@ -1202,6 +1250,7 @@ void init_renderpass(struct sample_info &info, bool include_depth, bool clear, V
     VkRenderPassCreateInfo rp_info = {};
     rp_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     rp_info.pNext = NULL;
+    rp_info.flags = 0;
     rp_info.attachmentCount = include_depth ? 2 : 1;
     rp_info.pAttachments = attachments;
     rp_info.subpassCount = 1;
@@ -1224,6 +1273,7 @@ void init_framebuffers(struct sample_info &info, bool include_depth) {
     VkFramebufferCreateInfo fb_info = {};
     fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     fb_info.pNext = NULL;
+    fb_info.flags = 0;
     fb_info.renderPass = info.render_pass;
     fb_info.attachmentCount = include_depth ? 2 : 1;
     fb_info.pAttachments = attachments;
@@ -1336,6 +1386,106 @@ void init_device_queue(struct sample_info &info) {
     }
 }
 
+// TODO: This is a hack to just jam data copied from ANGLE into this array
+void init_vtx_array(unsigned char *va) {
+    va[0] = 0x2c;
+    va[1] = 0x96;
+    va[2] = 0x26;
+    va[3] = 0xbe;
+    va[4] = 0x88;
+    va[5] = 0x6e;
+    va[6] = 0x1e;
+    va[7] = 0x3f;
+    va[8] = 0xf5;
+    va[9] = 0xfd;
+    va[10] = 0x38;
+    va[11] = 0x42;
+    va[12] = 0xb6;
+    va[13] = 0xf3;
+    va[14] = 0x55;
+    va[15] = 0x3f;
+    va[16] = 0xa8;
+    va[17] = 0x9f;
+    va[18] = 0xbd;
+    va[19] = 0xbd;
+    va[20] = 0x00;
+    va[21] = 0xe3;
+    va[22] = 0xc1;
+    va[23] = 0x42;
+    va[24] = 0x5b;
+    va[25] = 0x1a;
+    va[26] = 0x49;
+    va[27] = 0xbf;
+    va[28] = 0xcb;
+    va[29] = 0xd1;
+    va[30] = 0x65;
+    va[31] = 0xbf;
+    va[32] = 0x98;
+    va[33] = 0x23;
+    va[34] = 0x24;
+    va[35] = 0x43;
+    va[36] = 0x5a;
+    va[37] = 0xcb;
+    va[38] = 0x54;
+    va[39] = 0xbf;
+    va[40] = 0xae;
+    va[41] = 0xf4;
+    va[42] = 0x28;
+    va[43] = 0xbf;
+    va[44] = 0x13;
+    va[45] = 0x6b;
+    va[46] = 0x0b;
+    va[47] = 0x43;
+    va[48] = 0x40;
+    va[49] = 0xa0;
+    va[50] = 0x36;
+    va[51] = 0x3e;
+    va[52] = 0xa8;
+    va[53] = 0x31;
+    va[54] = 0x85;
+    va[55] = 0x3e;
+    va[56] = 0x31;
+    va[57] = 0x14;
+    va[58] = 0xe4;
+    va[59] = 0x42;
+    va[60] = 0x38;
+    va[61] = 0x49;
+    va[62] = 0x07;
+    va[63] = 0x3f;
+    va[64] = 0xe0;
+    va[65] = 0xd4;
+    va[66] = 0xd7;
+    va[67] = 0x3e;
+    va[68] = 0xdd;
+    va[69] = 0x3f;
+    va[70] = 0x2b;
+    va[71] = 0x43;
+    va[72] = 0x90;
+    va[73] = 0x97;
+    va[74] = 0x06;
+    va[75] = 0x3f;
+    va[76] = 0x20;
+    va[77] = 0x52;
+    va[78] = 0xb0;
+    va[79] = 0xbe;
+    va[80] = 0xd3;
+    va[81] = 0xfd;
+    va[82] = 0x87;
+    va[83] = 0x42;
+    va[84] = 0x58;
+    va[85] = 0x1c;
+    va[86] = 0xbd;
+    va[87] = 0x3e;
+    va[88] = 0xce;
+    va[89] = 0xfd;
+    va[90] = 0xa3;
+    va[91] = 0xbe;
+    va[92] = 0xe9;
+    va[93] = 0xa7;
+    va[94] = 0x23;
+    va[95] = 0x42;
+}
+
 void init_vertex_buffer(struct sample_info &info, const void *vertexData, uint32_t dataSize, uint32_t dataStride,
                         bool use_texture) {
     VkResult U_ASSERT_ONLY res;
@@ -1344,12 +1494,12 @@ void init_vertex_buffer(struct sample_info &info, const void *vertexData, uint32
     VkBufferCreateInfo buf_info = {};
     buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buf_info.pNext = NULL;
+    buf_info.flags = 0;
+    buf_info.size = 1048576;  // dataSize;
     buf_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    buf_info.size = dataSize;
+    buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     buf_info.queueFamilyIndexCount = 0;
     buf_info.pQueueFamilyIndices = NULL;
-    buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    buf_info.flags = 0;
     res = vkCreateBuffer(info.device, &buf_info, NULL, &info.vertex_buffer.buf);
     assert(res == VK_SUCCESS);
 
@@ -1362,8 +1512,8 @@ void init_vertex_buffer(struct sample_info &info, const void *vertexData, uint32
     alloc_info.memoryTypeIndex = 0;
 
     alloc_info.allocationSize = mem_reqs.size;
-    pass = memory_type_from_properties(info, mem_reqs.memoryTypeBits,
-                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    pass = memory_type_from_properties(info, mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                                       // VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                        &alloc_info.memoryTypeIndex);
     assert(pass && "No mappable, coherent memory");
 
@@ -1378,7 +1528,15 @@ void init_vertex_buffer(struct sample_info &info, const void *vertexData, uint32
 
     memcpy(pData, vertexData, dataSize);
 
-    vkUnmapMemory(info.device, info.vertex_buffer.mem);
+    VkMappedMemoryRange mapped_mem_range = {};
+    mapped_mem_range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    mapped_mem_range.pNext = NULL;
+    mapped_mem_range.memory = info.vertex_buffer.mem;
+    mapped_mem_range.offset = 0;
+    mapped_mem_range.size = 128;
+    vkFlushMappedMemoryRanges(info.device, 1, &mapped_mem_range);
+    // TODO: ANGLE doesn't unmap here
+    // vkUnmapMemory(info.device, info.vertex_buffer.mem);
 
     res = vkBindBufferMemory(info.device, info.vertex_buffer.buf, info.vertex_buffer.mem, 0);
     assert(res == VK_SUCCESS);
@@ -1389,12 +1547,16 @@ void init_vertex_buffer(struct sample_info &info, const void *vertexData, uint32
 
     info.vi_attribs[0].binding = 0;
     info.vi_attribs[0].location = 0;
-    info.vi_attribs[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    info.vi_attribs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     info.vi_attribs[0].offset = 0;
-    info.vi_attribs[1].binding = 0;
-    info.vi_attribs[1].location = 1;
-    info.vi_attribs[1].format = use_texture ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
-    info.vi_attribs[1].offset = 16;
+    //    info.vi_attribs[0].binding = 0;
+    //    info.vi_attribs[0].location = 0;
+    //    info.vi_attribs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    //    info.vi_attribs[0].offset = 0;
+    //    info.vi_attribs[1].binding = 0;
+    //    info.vi_attribs[1].location = 1;
+    //    info.vi_attribs[1].format = use_texture ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
+    //    info.vi_attribs[1].offset = 16;
 }
 
 void init_descriptor_pool(struct sample_info &info, bool use_texture) {
@@ -1402,19 +1564,22 @@ void init_descriptor_pool(struct sample_info &info, bool use_texture) {
      * init_descriptor_and_pipeline_layouts() */
 
     VkResult U_ASSERT_ONLY res;
-    VkDescriptorPoolSize type_count[2];
+    VkDescriptorPoolSize type_count[3];
     type_count[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     type_count[0].descriptorCount = 1;
-    if (use_texture) {
-        type_count[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        type_count[1].descriptorCount = 1;
-    }
+    //    if (use_texture) {
+    type_count[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    type_count[1].descriptorCount = 1;
+    //   }
+    type_count[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    type_count[2].descriptorCount = 2;
 
     VkDescriptorPoolCreateInfo descriptor_pool = {};
     descriptor_pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     descriptor_pool.pNext = NULL;
-    descriptor_pool.maxSets = 1;
-    descriptor_pool.poolSizeCount = use_texture ? 2 : 1;
+    descriptor_pool.maxSets = NUM_DESCRIPTOR_SETS;
+    descriptor_pool.poolSizeCount = 3;
+    // use_texture ? 2 : 1;
     descriptor_pool.pPoolSizes = type_count;
 
     res = vkCreateDescriptorPool(info.device, &descriptor_pool, NULL, &info.desc_pool);
@@ -1442,25 +1607,25 @@ void init_descriptor_set(struct sample_info &info, bool use_texture) {
     writes[0] = {};
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[0].pNext = NULL;
-    writes[0].dstSet = info.desc_set[0];
+    writes[0].dstSet = info.desc_set[2];
+    writes[0].dstBinding = 0;
+    writes[0].dstArrayElement = 0;
     writes[0].descriptorCount = 1;
     writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     writes[0].pBufferInfo = &info.uniform_data.buffer_info;
-    writes[0].dstArrayElement = 0;
-    writes[0].dstBinding = 0;
 
-    if (use_texture) {
-        writes[1] = {};
-        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[1].dstSet = info.desc_set[0];
-        writes[1].dstBinding = 1;
-        writes[1].descriptorCount = 1;
-        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writes[1].pImageInfo = &info.texture_data.image_info;
-        writes[1].dstArrayElement = 0;
-    }
+    //    if (use_texture) {
+    //        writes[1] = {};
+    //        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    //        writes[1].dstSet = info.desc_set[2];
+    //        writes[1].dstBinding = 1;
+    //        writes[1].descriptorCount = 1;
+    //        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    //        writes[1].pImageInfo = &info.texture_data.image_info;
+    //        writes[1].dstArrayElement = 0;
+    //    }
 
-    vkUpdateDescriptorSets(info.device, use_texture ? 2 : 1, writes, 0, NULL);
+    vkUpdateDescriptorSets(info.device, 1, writes, 0, NULL);
 }
 
 void init_shaders(struct sample_info &info, const char *vertShaderText, const char *fragShaderText) {
@@ -1550,8 +1715,9 @@ void init_pipeline(struct sample_info &info, VkBool32 include_depth, VkBool32 in
         vi.flags = 0;
         vi.vertexBindingDescriptionCount = 1;
         vi.pVertexBindingDescriptions = &info.vi_binding;
-        vi.vertexAttributeDescriptionCount = 2;
-        vi.pVertexAttributeDescriptions = info.vi_attribs;
+        //        vi.vertexAttributeDescriptionCount = 2;
+        vi.vertexAttributeDescriptionCount = 1;
+        //        vi.pVertexAttributeDescriptions = info.vi_attribs;
     }
     VkPipelineInputAssemblyStateCreateInfo ia;
     ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -1685,6 +1851,158 @@ void init_pipeline(struct sample_info &info, VkBool32 include_depth, VkBool32 in
     assert(res == VK_SUCCESS);
 }
 
+void init_gfx_pipeline(struct sample_info &info, VkBool32 include_depth, VkBool32 include_vi) {
+    VkResult U_ASSERT_ONLY res;
+
+    VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE];
+    VkPipelineDynamicStateCreateInfo dynamicState = {};
+    memset(dynamicStateEnables, 0, sizeof dynamicStateEnables);
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.pNext = NULL;
+    dynamicState.pDynamicStates = dynamicStateEnables;
+    dynamicState.dynamicStateCount = 0;
+
+    VkPipelineVertexInputStateCreateInfo vi;
+    memset(&vi, 0, sizeof(vi));
+    vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    if (include_vi) {
+        vi.pNext = NULL;
+        vi.flags = 0;
+        vi.vertexBindingDescriptionCount = 1;
+        vi.pVertexBindingDescriptions = &info.vi_binding;
+        vi.vertexAttributeDescriptionCount = 1;
+        vi.pVertexAttributeDescriptions = info.vi_attribs;
+    }
+    VkPipelineInputAssemblyStateCreateInfo ia;
+    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ia.pNext = NULL;
+    ia.flags = 0;
+    ia.primitiveRestartEnable = VK_FALSE;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+
+    VkPipelineRasterizationStateCreateInfo rs;
+    rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rs.pNext = NULL;
+    rs.flags = 0;
+    rs.depthClampEnable = VK_FALSE;
+    rs.rasterizerDiscardEnable = VK_FALSE;
+    rs.polygonMode = VK_POLYGON_MODE_FILL;
+    rs.cullMode = VK_CULL_MODE_NONE;
+    rs.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rs.depthBiasEnable = VK_FALSE;
+    rs.depthBiasConstantFactor = 0;
+    rs.depthBiasClamp = 0;
+    rs.depthBiasSlopeFactor = 0;
+    rs.lineWidth = 1.0f;
+
+    VkPipelineColorBlendStateCreateInfo cb;
+    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    cb.pNext = NULL;
+    cb.flags = 0;
+    cb.logicOpEnable = VK_FALSE;
+    cb.logicOp = VK_LOGIC_OP_CLEAR;
+    VkPipelineColorBlendAttachmentState att_state[1];
+    att_state[0].blendEnable = VK_FALSE;
+    att_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    att_state[0].dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    att_state[0].colorBlendOp = VK_BLEND_OP_ADD;
+    att_state[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    att_state[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    att_state[0].alphaBlendOp = VK_BLEND_OP_ADD;
+    att_state[0].colorWriteMask = 0xf;
+    cb.attachmentCount = 1;
+    cb.pAttachments = att_state;
+    cb.blendConstants[0] = 0.0f;
+    cb.blendConstants[1] = 0.0f;
+    cb.blendConstants[2] = 0.0f;
+    cb.blendConstants[3] = 0.0f;
+
+    VkPipelineViewportStateCreateInfo vp = {};
+    vp.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vp.pNext = NULL;
+    vp.flags = 0;
+    //#ifndef __ANDROID__
+    //    vp.viewportCount = NUM_VIEWPORTS;
+    //    dynamicStateEnables[dynamicState.dynamicStateCount++] = VK_DYNAMIC_STATE_VIEWPORT;
+    //    vp.scissorCount = NUM_SCISSORS;
+    //    dynamicStateEnables[dynamicState.dynamicStateCount++] = VK_DYNAMIC_STATE_SCISSOR;
+    //    vp.pScissors = NULL;
+    //    vp.pViewports = NULL;
+    //#else
+    // Temporary disabling dynamic viewport on Android because some of drivers doesn't
+    // support the feature.
+    VkViewport viewports;
+    viewports.minDepth = 0.0f;
+    viewports.maxDepth = 1.0f;
+    viewports.x = 3.0f;
+    viewports.y = 257.0f;
+    viewports.width = 256.0f;    // info.width;
+    viewports.height = -256.0f;  // info.height;
+    VkRect2D scissor;
+    scissor.extent.width = 0x7FFFFFFF;   // info.width;
+    scissor.extent.height = 0x7FFFFFFF;  // info.height;
+    scissor.offset.x = 0;
+    scissor.offset.y = -2147483347;
+    vp.viewportCount = NUM_VIEWPORTS;
+    vp.pViewports = &viewports;
+    vp.scissorCount = NUM_SCISSORS;
+    vp.pScissors = &scissor;
+    //#endif
+    VkPipelineDepthStencilStateCreateInfo ds;
+    ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ds.pNext = NULL;
+    ds.flags = 0;
+    ds.depthTestEnable = VK_FALSE;  // include_depth;
+    ds.depthWriteEnable = VK_TRUE;  // include_depth;
+    ds.depthCompareOp = VK_COMPARE_OP_LESS;
+    ds.depthBoundsTestEnable = VK_FALSE;
+    ds.stencilTestEnable = VK_FALSE;
+    ds.back.failOp = VK_STENCIL_OP_KEEP;
+    ds.back.passOp = VK_STENCIL_OP_KEEP;
+    ds.back.depthFailOp = VK_STENCIL_OP_KEEP;
+    ds.back.compareOp = VK_COMPARE_OP_ALWAYS;
+    ds.back.compareMask = 0xFFFFFFFF;
+    ds.back.writeMask = 0xFFFFFFFF;
+    ds.back.reference = 0;
+    ds.front = ds.back;
+    ds.minDepthBounds = 0;
+    ds.maxDepthBounds = 0;
+
+    VkPipelineMultisampleStateCreateInfo ms;
+    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.pNext = NULL;
+    ms.flags = 0;
+    ms.rasterizationSamples = NUM_SAMPLES;
+    ms.sampleShadingEnable = VK_FALSE;
+    ms.minSampleShading = 0.0;
+    ms.pSampleMask = NULL;
+    ms.alphaToCoverageEnable = VK_FALSE;
+    ms.alphaToOneEnable = VK_FALSE;
+
+    VkGraphicsPipelineCreateInfo pipeline;
+    pipeline.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeline.pNext = NULL;
+    pipeline.flags = 0;
+    pipeline.stageCount = 2;
+    pipeline.pStages = info.shaderStages;
+    pipeline.pVertexInputState = &vi;
+    pipeline.pInputAssemblyState = &ia;
+    pipeline.pTessellationState = NULL;
+    pipeline.pViewportState = &vp;
+    pipeline.pRasterizationState = &rs;
+    pipeline.pMultisampleState = &ms;
+    pipeline.pDepthStencilState = &ds;
+    pipeline.pColorBlendState = &cb;
+    pipeline.pDynamicState = NULL;  //&dynamicState;
+    pipeline.layout = info.pipeline_layout;
+    pipeline.renderPass = info.render_pass;
+    pipeline.subpass = 0;
+    pipeline.basePipelineHandle = VK_NULL_HANDLE;
+    pipeline.basePipelineIndex = 0;
+    res = vkCreateGraphicsPipelines(info.device, info.pipelineCache, 1, &pipeline, NULL, &info.pipeline);
+    assert(res == VK_SUCCESS);
+}
+
 void init_sampler(struct sample_info &info, VkSampler &sampler) {
     VkResult U_ASSERT_ONLY res;
 
@@ -1750,7 +2068,7 @@ void init_image(struct sample_info &info, texture_object &texObj, const char *te
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_create_info.pNext = NULL;
     image_create_info.imageType = VK_IMAGE_TYPE_2D;
-    image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    image_create_info.format = VK_FORMAT_B8G8R8A8_UNORM;
     image_create_info.extent.width = texObj.tex_width;
     image_create_info.extent.height = texObj.tex_height;
     image_create_info.extent.depth = 1;
@@ -1952,7 +2270,7 @@ void init_image(struct sample_info &info, texture_object &texObj, const char *te
     view_info.pNext = NULL;
     view_info.image = VK_NULL_HANDLE;
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    view_info.format = VK_FORMAT_B8G8R8A8_UNORM;
     view_info.components.r = VK_COMPONENT_SWIZZLE_R;
     view_info.components.g = VK_COMPONENT_SWIZZLE_G;
     view_info.components.b = VK_COMPONENT_SWIZZLE_B;

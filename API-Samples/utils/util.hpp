@@ -55,7 +55,8 @@
 
 /* Number of descriptor sets needs to be the same at alloc,       */
 /* pipeline layout creation, and descriptor set layout creation   */
-#define NUM_DESCRIPTOR_SETS 1
+//#define NUM_DESCRIPTOR_SETS 1
+#define NUM_DESCRIPTOR_SETS 3
 
 /* Number of samples needs to be the same at image creation,      */
 /* renderpass creation and pipeline creation.                     */

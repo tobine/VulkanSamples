@@ -22,7 +22,7 @@
 #define UTIL_INIT
 
 #include "util.hpp"
-
+#define USE_PUSH_CONSTANTS 0
 // Make sure functions start with init, execute, or destroy to assist codegen
 
 VkResult init_global_extension_properties(layer_properties &layer_props);
@@ -67,6 +67,7 @@ void init_descriptor_and_pipeline_layouts(struct sample_info &info, bool use_tex
 void init_renderpass(
     struct sample_info &info, bool include_depth, bool clear = true,
     VkImageLayout finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+void init_vtx_array(unsigned char* va);
 void init_vertex_buffer(struct sample_info &info, const void *vertexData,
                         uint32_t dataSize, uint32_t dataStride,
                         bool use_texture);
@@ -78,6 +79,8 @@ void init_shaders(struct sample_info &info, const char *vertShaderText,
 void init_pipeline_cache(struct sample_info &info);
 void init_pipeline(struct sample_info &info, VkBool32 include_depth,
                    VkBool32 include_vi = true);
+void init_gfx_pipeline(struct sample_info &info, VkBool32 include_depth,
+                       VkBool32 include_vi = true);
 void init_sampler(struct sample_info &info, VkSampler &sampler);
 void init_image(struct sample_info &info, texture_object &texObj,
                 const char *textureName, VkImageUsageFlags extraUsages = 0,
